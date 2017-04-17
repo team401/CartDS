@@ -76,7 +76,7 @@ int main() {
     Log::init(Log::Level::DEBUG, false); //Initialize the "logger", in this case more of an "output standard-izer"
     Log::setDoDebug(true); //Set the "output standard-izer" to show debugging messages
 
-    wiringPiSetupGpio(); //Set the pi inputs and outputs to use broadcom
+    wiringPiSetup(); //Set the pi inputs and outputs to use wiringpi pin numbering
 
     DS_Init(); //Start the driver station event loop
     DS_SetCustomRobotAddress("10.4.1.2"); //Set the robot address to the address of the 401 cRIO

@@ -6,8 +6,8 @@
 #include "lib/wiringpi/include/wiringPi.h"
 
 int Input::eStopPin = 0;
-int Input::disabledPin = 0;
-int Input::enabledPin = 0;
+int Input::disabledPin = 2;
+int Input::enabledPin = 3;
 
 void Input::init() {
     pinMode(eStopPin, INPUT);
