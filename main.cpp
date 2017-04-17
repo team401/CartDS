@@ -34,12 +34,18 @@ char getch() {
     return buf;
 }
 
-void* getUserInput(void*) {
+void* getKeyPresses(void*) {
     while (running) {
         if (getch() == 'q') {
-            running = 0; //Tell the program to stop
+            running = 0;
         }
+    }
+    pthread_exit(0);
+    return NULL;
+}
 
+void* getUserInput(void*) {
+    while (running) {
         if (Input::getEStop()) {
             DS_SetEmergencyStopped(true);
             Log::w("UI", "Cart Estopped!  The cRIO must be rebooted!");
@@ -82,6 +88,8 @@ int main() {
 
     pthread_t userInputThread;
     pthread_create(&userInputThread, NULL, &getUserInput, NULL);
+    pthread_t keyPressThread;
+    pthread_create(&keyPressThread, NULL, &getKeyPresses, NULL);
 
     while (running) { //General DS task loop, runs forever (until system shutdown or 'q' is pressed
         processEvents(); //Process any changes
