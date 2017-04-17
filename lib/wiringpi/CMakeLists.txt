@@ -1,12 +1,12 @@
-project(socky)
+project(wiringpi)
 
 include_directories(include)
 
-file(GLOB SOCKY_SRC
+file(GLOB WIRINGPI_SRC
         "*.h"
         "*.c"
         "*/*.h"
         "*/*.c"
         )
 
-add_library(socky ${SOCKY_SRC})
+add_library(wiringpi ${WIRINGPI_SRC})

@@ -7,10 +7,11 @@
 #include <unistd.h>
 #include <cstdlib>
 #include "Joystick.hpp"
+#include "lib/wiringpi/include/wiringPi.h"
 
 static bool running = true;
 
-static char getch() {
+char getch() {
     char buf=0;
     struct termios old={0};
     fflush(stdout);
@@ -31,7 +32,7 @@ static char getch() {
     return buf;
 }
 
-static void* getUserInput() {
+void* getUserInput(void*) {
     while (running) {
         if (getch() == 'q') {
             running = 0; //Tell the program to stop
@@ -42,7 +43,7 @@ static void* getUserInput() {
     return NULL;
 }
 
-static void processEvents() {
+void processEvents() {
 
 }
 

@@ -21,5 +21,4 @@ file(GLOB SOURCE_FILES
         "*.cpp")
 
 add_executable(CartDS ${SOURCE_FILES})
-target_link_libraries(CartDS pthread libds ${SDL2_LIBRARY}) #Link libds and wiringpi to the main executable
-#TODO set up WiringPi
+target_link_libraries(CartDS pthread libds wiringpi ${SDL2_LIBRARY}) #Link libds and wiringpi to the main executable
