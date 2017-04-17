@@ -2,6 +2,8 @@
 
 #include "Log.hpp"
 #include "lib/libds/include/LibDS.h"
+#include "Input.hpp"
+#include "Output.hpp"
 #include <pthread.h>
 #include <termios.h>
 #include <unistd.h>
@@ -37,6 +39,23 @@ void* getUserInput(void*) {
         if (getch() == 'q') {
             running = 0; //Tell the program to stop
         }
+
+        if (Input::getEStop()) {
+            DS_SetEmergencyStopped(true);
+            Log::w("UI", "Cart Estopped!  The cRIO must be rebooted!");
+        }
+
+        if (Input::getEnabled()) {
+            if (DS_GetRobotCode() && DS_GetRobotCommunications()) {
+                DS_SetRobotEnabled(true);
+                Log::d("UI", "Cart Enabled");
+            }
+        }
+
+        if (Input::getDisabled()) {
+            DS_SetRobotEnabled(false);
+            Log::d("UI", "Cart Disabled");
+        }
         DS_Sleep(20);
     }
     pthread_exit(0);
@@ -51,11 +70,15 @@ int main() {
     Log::init(Log::Level::DEBUG, false); //Initialize the "logger", in this case more of an "output standard-izer"
     Log::setDoDebug(true); //Set the "output standard-izer" to show debugging messages
 
+    wiringPiSetupGpio(); //Set the pi inputs and outputs to use broadcom
+
     DS_Init(); //Start the driver station event loop
     DS_SetCustomRobotAddress("10.4.1.2"); //Set the robot address to the address of the 401 cRIO
     DS_ConfigureProtocol(DS_GetProtocolFRC_2014()); //Set the DS to use the 2014 protocol, which is the one for a cRIO
 
     Joystick::initJoysticks(); //Initialize the joysticks
+    Input::init();
+    Output::init();
 
     pthread_t userInputThread;
     pthread_create(&userInputThread, NULL, &getUserInput, NULL);
