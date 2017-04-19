@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include "Joystick.hpp"
 #include "lib/wiringpi/include/wiringPi.h"
+#include "lib/libds/include/DS_Events.h"
 
 static bool running = true;
 
@@ -70,7 +71,14 @@ void* getUserInput(void*) {
 }
 
 void processEvents() {
-
+    DS_Event event;
+    while (DS_PollEvent(&event)) {
+        switch (event.type) {
+            case DS_ROBOT_VOLTAGE_CHANGED:
+                Output::setVoltage(event.robot.voltage);
+                break;
+        }
+    }
 }
 
 int main() {
