@@ -48,11 +48,12 @@ void* getUserInput(void*) {
     while (running) {
         if (Input::getEStop()) {
             DS_SetEmergencyStopped(true);
-            Log::w("UI", "Cart Estopped!  The cRIO must be rebooted!");
+            Log::w("UI", "Cart Estopped!  The RIO must be rebooted!");
         }
 
         if (Input::getEnabled()) {
-            if (DS_GetRobotCode() && DS_GetRobotCommunications()) {
+            if (DS_GetCanBeEnabled()) {
+                DS_SetControlMode(DS_CONTROL_TELEOPERATED);
                 DS_SetRobotEnabled(true);
                 Log::d("UI", "Cart Enabled");
             }
@@ -79,8 +80,11 @@ int main() {
     wiringPiSetup(); //Set the pi inputs and outputs to use wiringpi pin numbering
 
     DS_Init(); //Start the driver station event loop
+
+    DS_SetTeamNumber(401);
     DS_SetCustomRobotAddress("10.4.1.2"); //Set the robot address to the address of the 401 cRIO
-    DS_ConfigureProtocol(DS_GetProtocolFRC_2014()); //Set the DS to use the 2014 protocol, which is the one for a cRIO
+    DS_ConfigureProtocol(DS_GetProtocolFRC_2016()); //Set the DS to use the 2014 protocol, which is the one for a cRIO
+    DS_SetControlMode(DS_CONTROL_TELEOPERATED);
 
     Joystick::initJoysticks(); //Initialize the joysticks
     Input::init();
