@@ -77,6 +77,28 @@ void processEvents() {
             case DS_ROBOT_VOLTAGE_CHANGED:
                 Output::setVoltage(event.robot.voltage);
                 break;
+            case DS_ROBOT_ENABLED_CHANGED:
+                if (DS_GetEmergencyStopped()) {
+                    Output::setMode(2);
+                } else {
+                    if (DS_GetRobotEnabled()) {
+                        Output::setMode(0);
+                    } else {
+                        Output::setMode(1);
+                    }
+                }
+                break;
+            case DS_ROBOT_ESTOP_CHANGED:
+                if (DS_GetEmergencyStopped()) {
+                    Output::setMode(2);
+                } else {
+                    if (DS_GetRobotEnabled()) {
+                        Output::setMode(0);
+                    } else {
+                        Output::setMode(1);
+                    }
+                }
+                break;
         }
     }
 }
