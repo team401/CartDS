@@ -10,6 +10,8 @@ else()
     set(SDL2_LIBRARY /usr/lib/x86_64-linux-gnu/libSDL2.so)
 endif()
 
+include(cmake/FindZMQ.cmake) #Find ZMQ for comms
+
 include_directories(${SDL2_INCLUDE_DIR})
 
 set(CMAKE_CXX_STANDARD 11)
@@ -21,4 +23,4 @@ file(GLOB SOURCE_FILES
         "*.cpp")
 
 add_executable(CartDS ${SOURCE_FILES})
-target_link_libraries(CartDS pthread libds wiringpi ${SDL2_LIBRARY}) #Link libds and wiringpi to the main executable
+target_link_libraries(CartDS pthread libds wiringpi ${SDL2_LIBRARY} ${ZMQ_LIBRARY}) #Link libds and wiringpi to the main executable

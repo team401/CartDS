@@ -11,8 +11,10 @@
 #include "Joystick.hpp"
 #include "lib/wiringpi/include/wiringPi.h"
 #include "lib/libds/include/DS_Events.h"
+#include "zhelpers.hpp"
 
 static bool running = true;
+static int eStopCounter = 0;
 
 char getch() {
     char buf=0;
@@ -48,6 +50,12 @@ void* getKeyPresses(void*) {
 void* getUserInput(void*) {
     while (running) {
         if (Input::getEStop()) {
+            eStopCounter++;
+        } else {
+            eStopCounter = 0;
+        }
+
+        if (eStopCounter > 10) {
             DS_SetEmergencyStopped(true);
             Log::w("UI", "Cart Estopped!  The RIO must be rebooted!");
         }
@@ -64,10 +72,23 @@ void* getUserInput(void*) {
             DS_SetRobotEnabled(false);
             Log::d("UI", "Cart Disabled");
         }
+
         DS_Sleep(20);
     }
     pthread_exit(0);
     return NULL;
+}
+
+void updateOutput() {
+    if (DS_GetEmergencyStopped()) {
+        Output::setMode(3);
+    } else {
+        if (DS_GetRobotCommunications() && DS_GetRobotCode()) {
+            Output::setMode(DS_GetRobotEnabled());
+        } else {
+            Output::setMode(2);
+        }
+    }
 }
 
 void processEvents() {
@@ -78,34 +99,42 @@ void processEvents() {
                 Output::setVoltage(event.robot.voltage);
                 break;
             case DS_ROBOT_ENABLED_CHANGED:
-                if (DS_GetEmergencyStopped()) {
-                    Output::setMode(2);
-                } else {
-                    if (DS_GetRobotEnabled()) {
-                        Output::setMode(0);
-                    } else {
-                        Output::setMode(1);
-                    }
-                }
+                updateOutput();
                 break;
             case DS_ROBOT_ESTOP_CHANGED:
-                if (DS_GetEmergencyStopped()) {
-                    Output::setMode(2);
-                } else {
-                    if (DS_GetRobotEnabled()) {
-                        Output::setMode(0);
-                    } else {
-                        Output::setMode(1);
-                    }
-                }
+                updateOutput();
+                break;
+            case DS_ROBOT_COMMS_CHANGED:
+                updateOutput();
+                break;
+            case DS_ROBOT_CODE_CHANGED:
+                updateOutput();
                 break;
         }
     }
 }
 
+void* processNet(void*) { //Processes network events from the rio
+    zmq::context_t context(1);
+    zmq::socket_t socket(context, ZMQ_SUB);
+    socket.setsockopt(ZMQ_RCVTIMEO, 30);
+    socket.setsockopt(ZMQ_SUBSCRIBE, "", 0); //Subscribe to the power topic
+
+    socket.connect("tcp://10.4.1.2:5800");
+    int latestPower = 0;
+    while (running) {
+        try {
+            latestPower = stoi(s_recv(socket));
+        } catch (...) {
+            latestPower = 0;
+        }
+        Output::setPower(latestPower);
+    }
+}
+
 int main() {
     Log::init(Log::Level::DEBUG, false); //Initialize the "logger", in this case more of an "output standard-izer"
-    Log::setDoDebug(true); //Set the "output standard-izer" to show debugging messages
+    Log::setDoDebug(false); //Set the "output standard-izer" to show debugging messages
 
     wiringPiSetup(); //Set the pi inputs and outputs to use wiringpi pin numbering
 
@@ -124,8 +153,10 @@ int main() {
     pthread_create(&userInputThread, NULL, &getUserInput, NULL);
     pthread_t keyPressThread;
     pthread_create(&keyPressThread, NULL, &getKeyPresses, NULL);
+    pthread_t netThread;
+    pthread_create(&netThread, NULL, &processNet, NULL);
 
-    while (running) { //General DS task loop, runs forever (until system shutdown or 'q' is pressed
+    while (running) { //General DS task loop, runs forever (until system shutdown or 'q' is pressed)
         processEvents(); //Process any changes
         Joystick::updateJoysticks(); //Update the joysticks
         DS_Sleep(20);
