@@ -15,13 +15,17 @@ void Music::init() {
 }
 
 void Music::stopAll() {
-    Mix_HaltMusic();
+    if (currentSong != nullptr) {
+        Mix_HaltMusic(); //Stop playback
+        Mix_FreeMusic(currentSong); //Release current song from memory
+        currentSong = nullptr;
+    }
     Output::setNowPlaying("None");
 }
 
 void Music::playSong(std::string path, std::string name) {
-    Mix_HaltMusic(); //Stop currently playing music
-    currentSong = Mix_LoadMUS(path.c_str());
+    stopAll(); //Stop all previous music
+    currentSong = Mix_LoadMUS(path.c_str()); //Load new music
     Mix_PlayMusic(currentSong, 1); //Play current song once
     Output::setNowPlaying(name);
 }
