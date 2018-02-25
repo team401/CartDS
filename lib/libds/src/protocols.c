@@ -39,9 +39,15 @@
 #define RECV_PRECISION 50 /* Update the watchdogs every 50 milliseconds */
 
 /*
- * Holds a pointer to the current protocol in use
+ * Used to re-assing to 'empty' structure
  */
-static DS_Protocol* protocol = NULL;
+static const DS_Protocol EmptyProtocol;
+
+/*
+ * Protocol data
+ */
+static DS_Protocol protocol;
+static int enable_operations = 0;
 
 /*
  * Define the sender watchdogs (when one expires, we send a packet)
@@ -88,6 +94,16 @@ static int received_radio_packets = 0;
 static int received_robot_packets = 0;
 
 /*
+ * Sent/received bytes
+ */
+static unsigned long sent_fms_bytes = 0;
+static unsigned long recv_fms_bytes = 0;
+static unsigned long sent_radio_bytes = 0;
+static unsigned long recv_radio_bytes = 0;
+static unsigned long sent_robot_bytes = 0;
+static unsigned long recv_robot_bytes = 0;
+
+/*
  * The thread ID for the protocol event loop
  */
 static pthread_t event_thread;
@@ -98,10 +114,12 @@ static pthread_t event_thread;
  */
 static void send_fms_data()
 {
-    ++sent_fms_packets;
-    DS_String data = protocol->create_fms_packet();
-    DS_SocketSend (&protocol->fms_socket, &data);
-    DS_StrRmBuf (&data);
+    if (enable_operations) {
+        ++sent_fms_packets;
+        DS_String data = protocol.create_fms_packet();
+        sent_fms_bytes += DS_Max (DS_SocketSend (&protocol.fms_socket, &data), 0);
+        DS_StrRmBuf (&data);
+    }
 }
 
 /**
@@ -110,10 +128,12 @@ static void send_fms_data()
  */
 static void send_radio_data()
 {
-    ++sent_radio_packets;
-    DS_String data = protocol->create_radio_packet();
-    DS_SocketSend (&protocol->radio_socket, &data);
-    DS_StrRmBuf (&data);
+    if (enable_operations) {
+        ++sent_radio_packets;
+        DS_String data = protocol.create_radio_packet();
+        sent_radio_bytes += DS_Max (DS_SocketSend (&protocol.radio_socket, &data), 0);
+        DS_StrRmBuf (&data);
+    }
 }
 
 /**
@@ -122,10 +142,12 @@ static void send_radio_data()
  */
 static void send_robot_data()
 {
-    ++sent_robot_packets;
-    DS_String data = protocol->create_robot_packet();
-    DS_SocketSend (&protocol->robot_socket, &data);
-    DS_StrRmBuf (&data);
+    if (enable_operations) {
+        ++sent_robot_packets;
+        DS_String data = protocol.create_robot_packet();
+        sent_robot_bytes += DS_Max (DS_SocketSend (&protocol.robot_socket, &data), 0);
+        DS_StrRmBuf (&data);
+    }
 }
 
 /**
@@ -135,7 +157,7 @@ static void send_robot_data()
 static void send_data()
 {
     /* Protocol is NULL, abort */
-    if (!protocol)
+    if (!enable_operations)
         return;
 
     /* Send FMS packet */
@@ -175,36 +197,41 @@ static void clear_recv_data()
 static void recv_data()
 {
     /* Protocol is NULL, abort */
-    if (!protocol)
+    if (!enable_operations)
         return;
 
     /* Clear buffers (just to be sure) */
     clear_recv_data();
 
     /* Read data from sockets */
-    fms_data = DS_SocketRead (&protocol->fms_socket);
-    radio_data = DS_SocketRead (&protocol->radio_socket);
-    robot_data = DS_SocketRead (&protocol->robot_socket);
-    netcs_data = DS_SocketRead (&protocol->netconsole_socket);
+    fms_data = DS_SocketRead (&protocol.fms_socket);
+    radio_data = DS_SocketRead (&protocol.radio_socket);
+    robot_data = DS_SocketRead (&protocol.robot_socket);
+    netcs_data = DS_SocketRead (&protocol.netconsole_socket);
+
+    /* Update received data indicators */
+    recv_fms_bytes += DS_StrLen (&fms_data);
+    recv_radio_bytes += DS_StrLen (&radio_data);
+    recv_robot_bytes += DS_StrLen (&robot_data);
 
     /* Read FMS packet */
     if (DS_StrLen (&fms_data) > 0) {
         ++received_fms_packets;
-        fms_read = protocol->read_fms_packet (&fms_data);
+        fms_read = protocol.read_fms_packet (&fms_data);
         CFG_SetFMSCommunications (fms_read);
     }
 
     /* Read radio packet */
     if (DS_StrLen (&radio_data) > 0) {
         ++received_radio_packets;
-        radio_read = protocol->read_radio_packet (&radio_data);
+        radio_read = protocol.read_radio_packet (&radio_data);
         CFG_SetRadioCommunications (radio_read);
     }
 
     /* Read robot packet */
     if (DS_StrLen (&robot_data) > 0) {
         ++received_robot_packets;
-        robot_read = protocol->read_robot_packet (&robot_data);
+        robot_read = protocol.read_robot_packet (&robot_data);
         CFG_SetRobotCommunications (robot_read);
     }
 
@@ -263,11 +290,10 @@ static void* run_event_loop()
         send_data();
         recv_data();
         update_watchdogs();
-
         DS_Sleep (5);
     }
 
-    pthread_exit (NULL);
+    return NULL;
 }
 
 /**
@@ -275,7 +301,10 @@ static void* run_event_loop()
  */
 DS_Protocol* DS_CurrentProtocol()
 {
-    return protocol;
+    if (enable_operations)
+        return &protocol;
+
+    return NULL;
 }
 
 /**
@@ -295,15 +324,23 @@ void Protocols_Init()
 
     /* Allow the event loop to run */
     running = 1;
+    enable_operations = 0;
 
     /* Configure the event thread */
-    int error = pthread_create (&event_thread, NULL, &run_event_loop, NULL);
+    int error = pthread_create (&event_thread, NULL,
+                                &run_event_loop, NULL);
+
+    /* Display error message if we cannot star the event loop */
+    if (error) {
+        DS_String caption = DS_StrNew ("LibDS");
+        DS_String message = DS_StrNew ("Cannot start protocol event loop!");
+        DS_ShowMessageBox (&caption, &message, DS_ICON_ERROR);
+        DS_StrRmBuf (&caption);
+        DS_StrRmBuf (&message);
+    }
 
     /* Quit if the thread fails to start */
-    if (error) {
-        fprintf (stderr, "Cannot initialize event thread");
-        exit (EXIT_FAILURE);
-    }
+    assert (!error);
 }
 
 /**
@@ -311,9 +348,12 @@ void Protocols_Init()
  */
 static void close_protocol()
 {
-    /* Protocol is NULL, abort */
-    if (!protocol)
+    /* Protocol is empty, abort */
+    if (!enable_operations)
         return;
+
+    /* Disable protocol operations */
+    enable_operations = 0;
 
     /* Stop sender timers */
     DS_TimerStop (&fms_send_timer);
@@ -326,18 +366,30 @@ static void close_protocol()
     DS_TimerStop (&robot_recv_timer);
 
     /* Close the sockets */
-    DS_SocketClose (&protocol->fms_socket);
-    DS_SocketClose (&protocol->radio_socket);
-    DS_SocketClose (&protocol->robot_socket);
-    DS_SocketClose (&protocol->netconsole_socket);
+    DS_SocketClose (&protocol.fms_socket);
+    DS_SocketClose (&protocol.radio_socket);
+    DS_SocketClose (&protocol.robot_socket);
+    DS_SocketClose (&protocol.netconsole_socket);
+
+    /* Reset sent/recv bytes */
+    sent_fms_bytes = 0;
+    recv_fms_bytes = 0;
+    sent_radio_bytes = 0;
+    recv_radio_bytes = 0;
+    sent_robot_bytes = 0;
+    recv_robot_bytes = 0;
+
+    /* Reset sent/recv packets */
+    DS_ResetFMSPackets();
+    DS_ResetRadioPackets();
+    DS_ResetRadioPackets();
 
     /* Create notification string */
-    DS_String str = DS_StrFormat ("Closed %s", protocol->name.buf);
+    char* name = DS_StrToChar (&protocol.name);
+    DS_String str = DS_StrFormat ("Closed %s protocol", name);
     CFG_AddNotification (&str);
     DS_StrRmBuf (&str);
-
-    /* De-allocate the protocol */
-    DS_SmartFree ((void**) &protocol);
+    DS_FREE (name);
 }
 
 /**
@@ -348,40 +400,42 @@ void Protocols_Close()
     running = 0;
     close_protocol();
     clear_recv_data();
-    DS_StopThread (&event_thread);
 }
 
 /**
  * De-allocates the current protocol and loads the given protocol
  *
+ * Note the given \a ptr is not used directly, you should free it
+ * after using it...
+ *
  * \param ptr pointer to the new protocol implementation to load
  */
-void DS_ConfigureProtocol (DS_Protocol* ptr)
+void DS_ConfigureProtocol (const DS_Protocol* ptr)
 {
     /* Pointer is NULL, abort */
-    assert (ptr);
+    assert (ptr != NULL);
 
     /* Close previous protocol */
     close_protocol();
 
     /* Re-assign the protocol */
-    protocol = ptr;
+    protocol = *ptr;
 
     /* Update sockets */
-    DS_SocketOpen (&ptr->fms_socket);
-    DS_SocketOpen (&ptr->radio_socket);
-    DS_SocketOpen (&ptr->robot_socket);
-    DS_SocketOpen (&ptr->netconsole_socket);
+    DS_SocketOpen (&protocol.fms_socket);
+    DS_SocketOpen (&protocol.radio_socket);
+    DS_SocketOpen (&protocol.robot_socket);
+    DS_SocketOpen (&protocol.netconsole_socket);
 
     /* Update sender timers */
-    fms_send_timer.time = ptr->fms_interval;
-    radio_send_timer.time = ptr->radio_interval;
-    robot_send_timer.time = ptr->robot_interval;
+    fms_send_timer.time = protocol.fms_interval;
+    radio_send_timer.time = protocol.radio_interval;
+    robot_send_timer.time = protocol.robot_interval;
 
     /* Update watchdogs */
-    fms_recv_timer.time = DS_Min (ptr->fms_interval * 50, 1000);
-    radio_recv_timer.time = DS_Min (ptr->radio_interval * 50, 1000);
-    robot_recv_timer.time = DS_Min (ptr->robot_interval * 50, 1000);
+    fms_recv_timer.time = DS_Min (protocol.fms_interval * 50, 1000);
+    radio_recv_timer.time = DS_Min (protocol.radio_interval * 50, 1000);
+    robot_recv_timer.time = DS_Min (protocol.robot_interval * 50, 1000);
 
     /* Start the timers */
     DS_TimerStart (&fms_send_timer);
@@ -392,13 +446,93 @@ void DS_ConfigureProtocol (DS_Protocol* ptr)
     DS_TimerStart (&robot_recv_timer);
 
     /* Create notification string */
-    DS_String str = DS_StrFormat ("Loaded %s", ptr->name.buf);
+    char* name = DS_StrToChar (&protocol.name);
+    DS_String str = DS_StrFormat ("Loaded %s protocol", name);
     CFG_AddNotification (&str);
     DS_StrRmBuf (&str);
+    DS_FREE (name);
+
+    /* Restore protocol operations */
+    enable_operations = 1;
 }
 
 /**
- * Returns the number of sent FMS packets
+ * Returns the number of sent FMS bytes since the current
+ * protocol was loaded.
+ *
+ * This value is only reset to 0 when the current protocol
+ * is closed (e.g while loading another protocol).
+ */
+unsigned long DS_SentFMSBytes()
+{
+    return sent_fms_bytes;
+}
+
+/**
+ * Returns the number of sent radio bytes since the current
+ * protocol was loaded.
+ *
+ * This value is only reset to 0 when the current protocol
+ * is closed (e.g while loading another protocol).
+ */
+unsigned long DS_SentRadioBytes()
+{
+    return sent_radio_bytes;
+}
+
+/**
+ * Returns the number of sent robot bytes since the current
+ * protocol was loaded.
+ *
+ * This value is only reset to 0 when the current protocol
+ * is closed (e.g while loading another protocol).
+ */
+unsigned long DS_SentRobotBytes()
+{
+    return sent_robot_bytes;
+}
+
+/**
+ * Returns the number of received FMS bytes since the
+ * current protocol was loaded.
+ *
+ * This value is only reset to 0 when the current protocol
+ * is closed (e.g while loading another protocol).
+ */
+unsigned long DS_ReceivedFMSBytes()
+{
+    return recv_fms_bytes;
+}
+
+/**
+ * Returns the number of received radio bytes since the
+ * current protocol was loaded.
+ *
+ * This value is only reset to 0 when the current protocol
+ * is closed (e.g while loading another protocol).
+ */
+unsigned long DS_ReceivedRadioBytes()
+{
+    return recv_radio_bytes;
+}
+
+/**
+ * Returns the number of received robot bytes since the
+ * current protocol was loaded.
+ *
+ * This value is only reset to 0 when the current protocol
+ * is closed (e.g while loading another protocol).
+ */
+unsigned long DS_ReceivedRobotBytes()
+{
+    return recv_robot_bytes;
+}
+
+/**
+ * Returns the number of sent FMS packets.
+ *
+ * This value is reset when the communications with
+ * the FMS are changed, or when the protocol is changed.
  */
 int DS_SentFMSPackets()
 {
@@ -406,7 +540,10 @@ int DS_SentFMSPackets()
 }
 
 /**
- * Returns the number of sent radio packets
+ * Returns the number of sent radio packets.
+ *
+ * This value is reset when the communications with
+ * the radio are changed, or when the protocol is changed.
  */
 int DS_SentRadioPackets()
 {
@@ -414,7 +551,10 @@ int DS_SentRadioPackets()
 }
 
 /**
- * Returns the number of sent robot packets
+ * Returns the number of sent robot packets.
+ *
+ * This value is reset when the communications with
+ * the robot are changed, or when the protocol is changed.
  */
 int DS_SentRobotPackets()
 {
@@ -422,7 +562,10 @@ int DS_SentRobotPackets()
 }
 
 /**
- * Returns the number of received FMS packets
+ * Returns the number of received FMS packets.
+ *
+ * This value is reset when the communications with
+ * the FMS are changed, or when the protocol is changed.
  */
 int DS_ReceivedFMSPackets()
 {
@@ -430,7 +573,10 @@ int DS_ReceivedFMSPackets()
 }
 
 /**
- * Returns the number of received radio packets
+ * Returns the number of received radio packets.
+ *
+ * This value is reset when the communications with
+ * the radio are changed, or when the protocol is changed.
  */
 int DS_ReceivedRadioPackets()
 {
@@ -438,7 +584,10 @@ int DS_ReceivedRadioPackets()
 }
 
 /**
- * Returns the number of received robot packets
+ * Returns the number of received robot packets.
+ *
+ * This value is reset when the communications with
+ * the robot are changed, or when the protocol is changed.
  */
 int DS_ReceivedRobotPackets()
 {

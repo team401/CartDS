@@ -65,7 +65,7 @@ static int max_joysticks = 4;
 /*
  * Control code flags
  */
-static int resync = 0;
+static int resync = 1;
 static int reboot = 0;
 static int restart_code = 0;
 
@@ -223,7 +223,7 @@ static DS_String get_joystick_data (void)
         /* Generate button data */
         uint16_t button_flags = 0;
         for (j = 0; j < max_buttons; ++j)
-            button_flags += DS_GetJoystickButton (i, j) ? pow (2, j) : 0;
+            button_flags += (uint16_t) DS_GetJoystickButton (i, j) ? j * j : 0;
 
         /* Add button data */
         DS_StrAppend (&buf, (button_flags & 0xff00) >> 8);
@@ -314,18 +314,18 @@ static DS_String create_robot_packet (void)
     /* Now resize the datagram to 1024 bytes */
     DS_StrResize (&data, 1024);
 
-    /* Add FRC Driver Station version (same as the one sent by 16.0.1) */
-    DS_StrSetChar (&data, 72, (uint8_t) 0x30);
+    /* Add FRC Driver Station version (same as FRC DS 17.01) */
+    DS_StrSetChar (&data, 72, (uint8_t) 0x31);
     DS_StrSetChar (&data, 73, (uint8_t) 0x34);
     DS_StrSetChar (&data, 74, (uint8_t) 0x30);
-    DS_StrSetChar (&data, 75, (uint8_t) 0x31);
+    DS_StrSetChar (&data, 75, (uint8_t) 0x32);
     DS_StrSetChar (&data, 76, (uint8_t) 0x31);
-    DS_StrSetChar (&data, 77, (uint8_t) 0x36);
+    DS_StrSetChar (&data, 77, (uint8_t) 0x37);
     DS_StrSetChar (&data, 78, (uint8_t) 0x30);
     DS_StrSetChar (&data, 79, (uint8_t) 0x30);
 
     /* Add CRC32 checksum */
-    uint32_t checksum = DS_CRC32 (data.buf, sizeof (data));
+    uint32_t checksum = DS_CRC32 (data.buf, DS_StrLen (&data));
     DS_StrSetChar (&data, 1020, (checksum & 0xff000000) >> 24);
     DS_StrSetChar (&data, 1021, (checksum & 0xff0000) >> 16);
     DS_StrSetChar (&data, 1022, (checksum & 0xff00) >> 8);
@@ -464,71 +464,71 @@ void restart_robot_code (void)
 /**
  * Initializes and configures the FRC 2014 communication protocol
  */
-DS_Protocol* DS_GetProtocolFRC_2014 (void)
+DS_Protocol DS_GetProtocolFRC_2014 (void)
 {
     /* Initialize pointers */
-    DS_Protocol* protocol = (DS_Protocol*) malloc (sizeof (DS_Protocol));
+    DS_Protocol protocol;
 
     /* Set protocol name */
-    protocol->name = DS_StrNew ("FRC 2014 Protocol");
+    protocol.name = DS_StrNew ("FRC 2014");
 
     /* Set address functions */
-    protocol->fms_address = &fms_address;
-    protocol->radio_address = &radio_address;
-    protocol->robot_address = &robot_address;
+    protocol.fms_address = &fms_address;
+    protocol.radio_address = &radio_address;
+    protocol.robot_address = &robot_address;
 
     /* Set packet generator functions */
-    protocol->create_fms_packet = &create_fms_packet;
-    protocol->create_radio_packet = &create_radio_packet;
-    protocol->create_robot_packet = &create_robot_packet;
+    protocol.create_fms_packet = &create_fms_packet;
+    protocol.create_radio_packet = &create_radio_packet;
+    protocol.create_robot_packet = &create_robot_packet;
 
     /* Set packet interpretation functions */
-    protocol->read_fms_packet = &read_fms_packet;
-    protocol->read_radio_packet = &read_radio_packet;
-    protocol->read_robot_packet = &read_robot_packet;
+    protocol.read_fms_packet = &read_fms_packet;
+    protocol.read_radio_packet = &read_radio_packet;
+    protocol.read_robot_packet = &read_robot_packet;
 
     /* Set reset functions */
-    protocol->reset_fms = &reset_fms;
-    protocol->reset_radio = &reset_radio;
-    protocol->reset_robot = &reset_robot;
+    protocol.reset_fms = &reset_fms;
+    protocol.reset_radio = &reset_radio;
+    protocol.reset_robot = &reset_robot;
 
     /* Set misc. functions */
-    protocol->max_battery_voltage = 13;
-    protocol->reboot_robot = &reboot_robot;
-    protocol->restart_robot_code = &restart_robot_code;
+    protocol.max_battery_voltage = 13;
+    protocol.reboot_robot = &reboot_robot;
+    protocol.restart_robot_code = &restart_robot_code;
 
     /* Set packet intervals */
-    protocol->fms_interval = 500;
-    protocol->radio_interval = 0;
-    protocol->robot_interval = 20;
+    protocol.fms_interval = 500;
+    protocol.radio_interval = 0;
+    protocol.robot_interval = 20;
 
     /* Set joystick properties */
-    protocol->max_hat_count = max_hats;
-    protocol->max_axis_count = max_axes;
-    protocol->max_joysticks = max_joysticks;
-    protocol->max_button_count = max_buttons;
+    protocol.max_hat_count = max_hats;
+    protocol.max_axis_count = max_axes;
+    protocol.max_joysticks = max_joysticks;
+    protocol.max_button_count = max_buttons;
 
     /* Define FMS socket properties */
-    protocol->fms_socket = *DS_SocketEmpty();
-    protocol->fms_socket.disabled = 0;
-    protocol->fms_socket.in_port = 1120;
-    protocol->fms_socket.out_port = 1160;
-    protocol->fms_socket.type = DS_SOCKET_UDP;
+    protocol.fms_socket = *DS_SocketEmpty();
+    protocol.fms_socket.disabled = 0;
+    protocol.fms_socket.in_port = 1120;
+    protocol.fms_socket.out_port = 1160;
+    protocol.fms_socket.type = DS_SOCKET_UDP;
 
     /* Define radio socket properties */
-    protocol->radio_socket = *DS_SocketEmpty();
-    protocol->radio_socket.disabled = 1;
+    protocol.radio_socket = *DS_SocketEmpty();
+    protocol.radio_socket.disabled = 1;
 
     /* Define robot socket properties */
-    protocol->robot_socket = *DS_SocketEmpty();
-    protocol->robot_socket.disabled = 0;
-    protocol->robot_socket.in_port = 1150;
-    protocol->robot_socket.out_port = 1110;
-    protocol->robot_socket.type = DS_SOCKET_UDP;
+    protocol.robot_socket = *DS_SocketEmpty();
+    protocol.robot_socket.disabled = 0;
+    protocol.robot_socket.in_port = 1150;
+    protocol.robot_socket.out_port = 1110;
+    protocol.robot_socket.type = DS_SOCKET_UDP;
 
     /* Define netconsole socket properties */
-    protocol->netconsole_socket = *DS_SocketEmpty();
-    protocol->netconsole_socket.disabled = 1;
+    protocol.netconsole_socket = *DS_SocketEmpty();
+    protocol.netconsole_socket.disabled = 1;
 
     /* Return the pointer */
     return protocol;

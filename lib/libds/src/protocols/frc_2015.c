@@ -281,7 +281,13 @@ static DS_String get_timezone_data (void)
     /* Get current time */
     time_t rt = 0;
     uint32_t ms = 0;
-    struct tm* timeinfo = localtime (&rt);
+    struct tm timeinfo;
+
+#if defined _WIN32
+    localtime_s (&timeinfo, &rt);
+#else
+    localtime_r (&rt, &timeinfo);
+#endif
 
 #if defined _WIN32
     /* Get timezone information */
@@ -289,11 +295,12 @@ static DS_String get_timezone_data (void)
     GetTimeZoneInformation (&info);
 
     /* Convert the wchar to a standard string */
-    char* str = malloc (wcslen (info.StandardName));
-    wcstombs (str, info.StandardName, wcslen (info.StandardName));
+    size_t len = wcslen (info.StandardName) + 1;
+    char* str = calloc (len, sizeof (char));
+    wcstombs_s (NULL, str, len, info.StandardName, wcslen (info.StandardName));
 
     /* Convert the obtained cstring to a bstring */
-    DS_String tz = DS_StringFromCString (str);
+    DS_String tz = DS_StrNew (str);
     free (str);
 
     /* Get milliseconds */
@@ -301,22 +308,22 @@ static DS_String get_timezone_data (void)
     ms = (uint32_t) info.StandardDate.wMilliseconds;
 #else
     /* Timezone is stored directly in time_t structure */
-    DS_String tz = DS_StrNew (timeinfo->tm_zone);
+    DS_String tz = DS_StrNew (timeinfo.tm_zone);
 #endif
 
     /* Encode date/time in datagram */
     DS_StrSetChar (&data, 0,  (uint8_t) 0x0b);
     DS_StrSetChar (&data, 1,  (uint8_t) cTagDate);
-    DS_StrSetChar (&data, 2,  (uint8_t) (ms & 0xff000000) >> 24);
-    DS_StrSetChar (&data, 3,  (uint8_t) (ms & 0xff0000) >> 16);
-    DS_StrSetChar (&data, 4,  (uint8_t) (ms & 0xff00) >> 8);
-    DS_StrSetChar (&data, 5,  (uint8_t) (ms & 0xff));
-    DS_StrSetChar (&data, 6,  (uint8_t) timeinfo->tm_sec);
-    DS_StrSetChar (&data, 7,  (uint8_t) timeinfo->tm_min);
-    DS_StrSetChar (&data, 8,  (uint8_t) timeinfo->tm_hour);
-    DS_StrSetChar (&data, 9,  (uint8_t) timeinfo->tm_yday);
-    DS_StrSetChar (&data, 10, (uint8_t) timeinfo->tm_mon);
-    DS_StrSetChar (&data, 11, (uint8_t) timeinfo->tm_year);
+    DS_StrSetChar (&data, 2,  (uint8_t) (ms >> 24));
+    DS_StrSetChar (&data, 3,  (uint8_t) (ms >> 16));
+    DS_StrSetChar (&data, 4,  (uint8_t) (ms >> 8));
+    DS_StrSetChar (&data, 5,  (uint8_t) (ms));
+    DS_StrSetChar (&data, 6,  (uint8_t) timeinfo.tm_sec);
+    DS_StrSetChar (&data, 7,  (uint8_t) timeinfo.tm_min);
+    DS_StrSetChar (&data, 8,  (uint8_t) timeinfo.tm_hour);
+    DS_StrSetChar (&data, 9,  (uint8_t) timeinfo.tm_yday);
+    DS_StrSetChar (&data, 10, (uint8_t) timeinfo.tm_mon);
+    DS_StrSetChar (&data, 11, (uint8_t) timeinfo.tm_year);
 
     /* Add timezone length and tag */
     DS_StrSetChar (&data, 12, DS_StrLen (&tz));
@@ -358,14 +365,14 @@ static DS_String get_joystick_data (void)
 
         /* Add button data */
         DS_StrAppend (&data, DS_GetJoystickNumButtons (i));
-        DS_StrAppend (&data, (button_flags & 0xff00) >> 8);
-        DS_StrAppend (&data, (button_flags & 0xff));
+        DS_StrAppend (&data, (uint8_t) (button_flags >> 8));
+        DS_StrAppend (&data, (uint8_t) (button_flags));
 
         /* Add hat data */
         DS_StrAppend (&data, DS_GetJoystickNumHats (i));
         for (j = 0; j < DS_GetJoystickNumHats (i); ++j) {
-            DS_StrAppend (&data, (DS_GetJoystickHat (i, j) & 0xff00) >> 8);
-            DS_StrAppend (&data, (DS_GetJoystickHat (i, j) & 0xff));
+            DS_StrAppend (&data, (uint8_t) (DS_GetJoystickHat (i, j) >> 8));
+            DS_StrAppend (&data, (uint8_t) (DS_GetJoystickHat (i, j)));
         }
     }
 
@@ -479,16 +486,16 @@ static DS_String create_fms_packet (void)
     encode_voltage (CFG_GetRobotVoltage(), &integer, &decimal);
 
     /* Add FMS packet count */
-    DS_StrSetChar (&data, 0, (sent_fms_packets & 0xff00) >> 8);
-    DS_StrSetChar (&data, 1, (sent_fms_packets & 0xff));
+    DS_StrSetChar (&data, 0, (sent_fms_packets >> 8));
+    DS_StrSetChar (&data, 1, (sent_fms_packets));
 
     /* Add DS version and FMS control code */
     DS_StrSetChar (&data, 2, cFMS_DS_Version);
     DS_StrSetChar (&data, 3, fms_control_code());
 
     /* Add team number */
-    DS_StrSetChar (&data, 4, (CFG_GetTeamNumber() & 0xff00) >> 8);
-    DS_StrSetChar (&data, 5, (CFG_GetTeamNumber() & 0xff));
+    DS_StrSetChar (&data, 4, (CFG_GetTeamNumber() >> 8));
+    DS_StrSetChar (&data, 5, (CFG_GetTeamNumber()));
 
     /* Add robot voltage */
     DS_StrSetChar (&data, 6, integer);
@@ -525,8 +532,8 @@ static DS_String create_robot_packet (void)
     DS_String data = DS_StrNewLen (6);
 
     /* Add packet index */
-    DS_StrSetChar (&data, 0, (sent_robot_packets & 0xff00) >> 8);
-    DS_StrSetChar (&data, 1, (sent_robot_packets & 0xff));
+    DS_StrSetChar (&data, 0, (sent_robot_packets >> 8));
+    DS_StrSetChar (&data, 1, (sent_robot_packets));
 
     /* Add packet header */
     DS_StrSetChar (&data, 2, cTagGeneral);
@@ -697,75 +704,75 @@ static void restart_robot_code (void)
 /**
  * Initializes the 2015 FRC Communication Protocol
  */
-DS_Protocol* DS_GetProtocolFRC_2015 (void)
+DS_Protocol DS_GetProtocolFRC_2015 (void)
 {
-    /* Initialize pointers */
-    DS_Protocol* protocol = (DS_Protocol*) malloc (sizeof (DS_Protocol));
+    /* Initialize structure */
+    DS_Protocol protocol;
 
     /* Set protocol name */
-    protocol->name = DS_StrNew ("FRC 2015 Protocol");
+    protocol.name = DS_StrNew ("FRC 2015");
 
     /* Set address functions */
-    protocol->fms_address = &fms_address;
-    protocol->radio_address = &radio_address;
-    protocol->robot_address = &robot_address;
+    protocol.fms_address = &fms_address;
+    protocol.radio_address = &radio_address;
+    protocol.robot_address = &robot_address;
 
     /* Set packet generator functions */
-    protocol->create_fms_packet = &create_fms_packet;
-    protocol->create_radio_packet = &create_radio_packet;
-    protocol->create_robot_packet = &create_robot_packet;
+    protocol.create_fms_packet = &create_fms_packet;
+    protocol.create_radio_packet = &create_radio_packet;
+    protocol.create_robot_packet = &create_robot_packet;
 
     /* Set packet interpretation functions */
-    protocol->read_fms_packet = &read_fms_packet;
-    protocol->read_radio_packet = &read_radio_packet;
-    protocol->read_robot_packet = &read_robot_packet;
+    protocol.read_fms_packet = &read_fms_packet;
+    protocol.read_radio_packet = &read_radio_packet;
+    protocol.read_robot_packet = &read_robot_packet;
 
     /* Set reset functions */
-    protocol->reset_fms = &reset_fms;
-    protocol->reset_radio = &reset_radio;
-    protocol->reset_robot = &reset_robot;
+    protocol.reset_fms = &reset_fms;
+    protocol.reset_radio = &reset_radio;
+    protocol.reset_robot = &reset_robot;
 
     /* Set misc. functions */
-    protocol->max_battery_voltage = 13;
-    protocol->reboot_robot = &reboot_robot;
-    protocol->restart_robot_code = &restart_robot_code;
+    protocol.max_battery_voltage = 13;
+    protocol.reboot_robot = &reboot_robot;
+    protocol.restart_robot_code = &restart_robot_code;
 
     /* Set packet intervals */
-    protocol->fms_interval = 500;
-    protocol->radio_interval = 0;
-    protocol->robot_interval = 20;
+    protocol.fms_interval = 500;
+    protocol.radio_interval = 0;
+    protocol.robot_interval = 20;
 
     /* Set joystick properties */
-    protocol->max_joysticks = 6;
-    protocol->max_hat_count = 1;
-    protocol->max_axis_count = 6;
-    protocol->max_button_count = 10;
+    protocol.max_joysticks = 6;
+    protocol.max_hat_count = 1;
+    protocol.max_axis_count = 6;
+    protocol.max_button_count = 10;
 
     /* Define FMS socket properties */
-    protocol->fms_socket = *DS_SocketEmpty();
-    protocol->fms_socket.disabled = 0;
-    protocol->fms_socket.in_port = 1120;
-    protocol->fms_socket.out_port = 1160;
-    protocol->fms_socket.type = DS_SOCKET_UDP;
+    protocol.fms_socket = *DS_SocketEmpty();
+    protocol.fms_socket.disabled = 0;
+    protocol.fms_socket.in_port = 1120;
+    protocol.fms_socket.out_port = 1160;
+    protocol.fms_socket.type = DS_SOCKET_UDP;
 
     /* Define radio socket properties */
-    protocol->radio_socket = *DS_SocketEmpty();
-    protocol->radio_socket.disabled = 1;
+    protocol.radio_socket = *DS_SocketEmpty();
+    protocol.radio_socket.disabled = 1;
 
     /* Define robot socket properties */
-    protocol->robot_socket = *DS_SocketEmpty();
-    protocol->robot_socket.disabled = 0;
-    protocol->robot_socket.in_port = 1150;
-    protocol->robot_socket.out_port = 1110;
-    protocol->robot_socket.type = DS_SOCKET_UDP;
+    protocol.robot_socket = *DS_SocketEmpty();
+    protocol.robot_socket.disabled = 0;
+    protocol.robot_socket.in_port = 1150;
+    protocol.robot_socket.out_port = 1110;
+    protocol.robot_socket.type = DS_SOCKET_UDP;
 
     /* Define netconsole socket properties */
-    protocol->netconsole_socket = *DS_SocketEmpty();
-    protocol->netconsole_socket.disabled = 0;
-    protocol->netconsole_socket.broadcast = 1;
-    protocol->netconsole_socket.in_port = 6666;
-    protocol->netconsole_socket.out_port = 6668;
-    protocol->netconsole_socket.type = DS_SOCKET_UDP;
+    protocol.netconsole_socket = *DS_SocketEmpty();
+    protocol.netconsole_socket.disabled = 0;
+    protocol.netconsole_socket.broadcast = 1;
+    protocol.netconsole_socket.in_port = 6666;
+    protocol.netconsole_socket.out_port = 6668;
+    protocol.netconsole_socket.type = DS_SOCKET_UDP;
 
     /* Return the protocol */
     return protocol;

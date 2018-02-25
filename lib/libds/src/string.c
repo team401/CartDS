@@ -29,6 +29,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define SPRINTF_S snprintf
+#ifdef _WIN32
+    #ifndef __MINGW32__
+        #undef  SPRINTF_S
+        #define SPRINTF_S sprintf_s
+    #endif
+#endif
+
 /**
  * Returns the length of the given \a string
  * \warning The program will quit if \a string is \c NULL
@@ -36,7 +44,7 @@
 int DS_StrLen (const DS_String* string)
 {
     assert (string);
-    return string->len;
+    return (int) string->len;
 }
 
 /**
@@ -45,8 +53,10 @@ int DS_StrLen (const DS_String* string)
  */
 int DS_StrEmpty (const DS_String* string)
 {
-    assert (string);
-    return DS_StrLen (string) == 0;
+    if (string)
+        return DS_StrLen (string) == 0;
+
+    return 1;
 }
 
 /**
@@ -207,6 +217,28 @@ int DS_StrJoin (DS_String* first, const DS_String* second)
 }
 
 /**
+ * Appends the given \a cstring to the \a string
+ *
+ * \returns 0 on failure, 1 on success
+ */
+int DS_StrJoinCStr (DS_String* string, const char* cstring)
+{
+    /* Check arguments */
+    assert (string);
+    assert (cstring);
+
+    /* Append each character to the string */
+    int i;
+    int len = (int) strlen (cstring);
+    for (i = 0; i < len; ++i)
+        if (!DS_StrAppend (string, cstring [i]))
+            return DS_STR_FAILURE;
+
+    /* Tell everyone how smart this function is */
+    return DS_STR_SUCCESS;
+}
+
+/**
  * Changes the character of the \a string at the given \a pos to \a byte
  *
  * \param string the string structure
@@ -242,18 +274,18 @@ char* DS_StrToChar (const DS_String* string)
 {
     /* Check arguments */
     assert (string);
-    assert (string->buf);
 
-    /* Initialize the c-string */
-    char* cstr = (char*) calloc (string->len + 1, sizeof (char));
+    /* Initialize the c-string with one extra byte (for null terminator) */
+    size_t len = string->len + 1;
+    char* cstr = (char*) calloc (len, sizeof (char));
 
     /* Copy buffer data into c-string */
     int i;
     for (i = 0; i < (int) string->len; ++i)
         cstr [i] = string->buf [i];
 
-    /* Add null terminator */
-    cstr [string->len] = '\0';
+    /* Add NULL-terminator */
+    cstr [string->len] = 0;
 
     /* Return obtained string */
     return cstr;
@@ -313,10 +345,10 @@ DS_String DS_StrNew (const char* string)
 /**
  * Returns a 0-filled string with the given \a length
  */
-DS_String DS_StrNewLen (const int length)
+DS_String DS_StrNewLen (const size_t length)
 {
     DS_String string;
-    string.len = abs (length);
+    string.len = length;
     string.buf = (char*) calloc (string.len, sizeof (char));
     return string;
 }
@@ -387,18 +419,19 @@ DS_String DS_StrFormat (const char* format, ...)
             /* Handle number values */
             if (next == 'u' || next == 'd' || next == 'f') {
                 char str [sizeof (double) * 2];
+                memset (str, 0, sizeof (str));
 
                 /* Get the representation of the number */
                 if (next == 'u')
-                    sprintf (str, "%u", (unsigned int) va_arg (args, unsigned int));
+                    SPRINTF_S (str, sizeof (str), "%u", (unsigned int) va_arg (args, unsigned int));
                 else if (next == 'd')
-                    sprintf (str, "%d", (int) va_arg (args, int));
+                    SPRINTF_S (str, sizeof (str), "%d", (int) va_arg (args, int));
                 else if (next == 'f')
-                    sprintf (str, "%.2f", (double) va_arg (args, double));
+                    SPRINTF_S (str, sizeof (str), "%.2f", (double) va_arg (args, double));
 
                 /* Append every character to the string */
                 int i = 0;
-                int len = strlen (str);
+                int len = (int) strlen (str);
                 for (i = 0; i < len; ++i)
                     DS_StrAppend (&string, str [i]);
             }
@@ -410,7 +443,7 @@ DS_String DS_StrFormat (const char* format, ...)
             /* Handle strings */
             else if (next == 's') {
                 char* str = (char*) va_arg (args, char*);
-                int len = strlen (str);
+                int len = (int) strlen (str);
 
                 /* Append every character to the string */
                 int i = 0;
@@ -437,4 +470,3 @@ DS_String DS_StrFormat (const char* format, ...)
     /* Return string structure */
     return string;
 }
-

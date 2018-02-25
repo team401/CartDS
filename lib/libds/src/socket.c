@@ -24,8 +24,16 @@
 #include "DS_Utils.h"
 #include "DS_Socket.h"
 
-#include "../../socky/include/socky.h"
+#include <socky.h>
 #include <assert.h>
+
+#define SPRINTF_S snprintf
+#ifdef _WIN32
+    #ifndef __MINGW32__
+        #undef  SPRINTF_S
+        #define SPRINTF_S sprintf_s
+    #endif
+#endif
 
 /**
  * Copies the received data from the socket in its data buffer
@@ -78,10 +86,12 @@ static void server_loop (DS_Socket* ptr)
     struct timeval tv;
 
     /* Disable socket blocking */
+#ifndef _WIN32
     set_socket_block (ptr->info.sock_in, 0);
+#endif
 
     /* Run the server while the socket is valid */
-    while (ptr && ptr->info.server_init == 1 && ptr->info.sock_in > 0) {
+    while (ptr->info.server_init && ptr->info.sock_in > 0) {
         tv.tv_sec = 0;
         tv.tv_usec = 5000 * 100;
 
@@ -116,13 +126,10 @@ static void* create_socket (void* data)
     memset (ptr->info.in_service, 0, sizeof (ptr->info.in_service));
     memset (ptr->info.out_service, 0, sizeof (ptr->info.out_service));
 
-    /* Assign fallback address if socket address is empty */
-    if (strlen (ptr->address) <= 0)
-        strcpy (ptr->address, DS_FallBackAddress);
-
     /* Set service strings */
-    sprintf (ptr->info.in_service, "%d", ptr->in_port);
-    sprintf (ptr->info.out_service, "%d", ptr->out_port);
+    int len = sizeof (ptr->info.in_service);
+    SPRINTF_S (ptr->info.in_service, len, "%d", ptr->in_port);
+    SPRINTF_S (ptr->info.out_service, len, "%d", ptr->out_port);
 
     /* Open TCP socket */
     if (ptr->type == DS_SOCKET_TCP) {
@@ -144,7 +151,7 @@ static void* create_socket (void* data)
     server_loop (ptr);
 
     /* Exit */
-    pthread_exit (NULL);
+    return NULL;
 }
 
 /**
@@ -163,7 +170,6 @@ DS_Socket* DS_SocketEmpty (void)
     socket->type = DS_SOCKET_UDP;
 
     /* Fill socket info structure */
-    socket->info.thread = 0;
     socket->info.sock_in = 0;
     socket->info.sock_out = 0;
     socket->info.buffer_size = 0;
@@ -211,13 +217,22 @@ void DS_SocketOpen (DS_Socket* ptr)
     if (ptr->disabled)
         return;
 
-    /* Stop the current thread (if any) */
-    if (ptr->info.thread)
-        DS_StopThread (&ptr->info.thread);
-
     /* Initialize the socket in another thread */
-    ptr->info.thread = 0;
-    pthread_create (&ptr->info.thread, NULL, &create_socket, (void*) ptr);
+    pthread_t thread;
+    int error = pthread_create (&thread, NULL,
+                                &create_socket, (void*) ptr);
+
+    /* Warn the user when the socket cannot start */
+    if (error) {
+        DS_String caption = DS_StrNew ("LibDS");
+        DS_String message = DS_StrNew ("Cannot start socket thread!");
+        DS_ShowMessageBox (&caption, &message, DS_ICON_ERROR);
+        DS_StrRmBuf (&caption);
+        DS_StrRmBuf (&message);
+    }
+
+    /* Quit if socket cannot start */
+    assert (!error);
 }
 
 /**
@@ -236,7 +251,7 @@ void DS_SocketClose (DS_Socket* ptr)
     ptr->info.client_init = 0;
 
     /* Close sockets */
-#ifdef __ANDROID__
+#if defined (__ANDROID__)
     socket_close_threaded (ptr->info.sock_in);
     socket_close_threaded (ptr->info.sock_out);
 #else
@@ -253,10 +268,6 @@ void DS_SocketClose (DS_Socket* ptr)
     memset (ptr->info.buffer, 0, sizeof (ptr->info.buffer));
     memset (ptr->info.in_service, 0, sizeof (ptr->info.in_service));
     memset (ptr->info.out_service, 0, sizeof (ptr->info.out_service));
-
-    /* Stop the socket thread (if any) */
-    DS_StopThread (&ptr->info.thread);
-    ptr->info.thread = 0;
 }
 
 /**
@@ -314,9 +325,9 @@ int DS_SocketSend (const DS_Socket* ptr, const DS_String* data)
 
     /* Data is empty */
     if (DS_StrEmpty (data))
-        return -1;
+        return 0;
 
-    /* Get raw data */
+    /* Initialize variables*/
     int bytes_written = 0;
     int len = DS_StrLen (data);
     char* bytes = DS_StrToChar (data);
@@ -331,8 +342,8 @@ int DS_SocketSend (const DS_Socket* ptr, const DS_String* data)
                                     ptr->address, ptr->info.out_service, 0);
     }
 
-    /* Free temp. buffer */
-    DS_SmartFree ((void**) &bytes);
+    /* Delete temp. buffer */
+    DS_FREE (bytes);
 
     /* Return error code */
     return bytes_written;
@@ -348,7 +359,10 @@ void DS_SocketChangeAddress (DS_Socket* ptr, const char* address)
 {
     /* Check arguments */
     assert (ptr);
-    assert (address);
+
+    /* Abort if address is NULL */
+    if (!address)
+        return;
 
     /* Re-assign the address */
     memset (ptr->address, 0, sizeof (ptr->address));

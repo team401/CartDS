@@ -20,8 +20,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "include/socky.h"
+#include "socky.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <pthread.h>
 
@@ -45,9 +46,9 @@ static int valid_sfd (int sfd)
 /**
  * Prints a detailed error message if \c VERBOSE is defined
  */
-static void error (int sfd, const char* message, int error)
+static void print_error (int sfd, const char* message, int error)
 {
-#if defined VERBOSE
+#if defined SOCKY_VERBOSE
 #if defined _WIN32
     const char* string = gai_strerrorA (error);
 #else
@@ -78,6 +79,10 @@ static void error (int sfd, const char* message, int error)
  */
 static int get_family (int flag)
 {
+    assert (flag == SOCKY_IPv4 ||
+            flag == SOCKY_IPv6 ||
+            flag == SOCKY_ANY);
+
     switch (flag) {
     case SOCKY_IPv4:
         return AF_INET;
@@ -95,7 +100,7 @@ static int get_family (int flag)
 }
 
 /**
- * Returns a valid sockety type. Input values can be:
+ * Returns a valid socket type. Input values can be:
  *    - \c SOCKY_TCP
  *    - \c SOCKY_UDP
  *
@@ -104,6 +109,9 @@ static int get_family (int flag)
  */
 static int get_socktype (int flag)
 {
+    assert (flag == SOCKY_TCP ||
+            flag == SOCKY_UDP);
+
     switch (flag) {
     case SOCKY_TCP:
         return SOCK_STREAM;
@@ -133,7 +141,7 @@ static int set_socket_options (int sfd)
             err = setsockopt (sfd,
                               SOL_SOCKET,
                               SO_REUSEADDR,
-                              &val, sizeof (val));
+                              (const char*) &val, sizeof (val));
 #else
 #ifndef __ANDROID__
             err *= setsockopt (sfd,
@@ -150,7 +158,7 @@ static int set_socket_options (int sfd)
 
         /* Setting the options failed */
         if (err != 0) {
-            error (sfd, "cannot set socket options", GET_ERR);
+            print_error (sfd, "cannot set socket options", GET_ERR);
             return -1;
         }
 
@@ -214,7 +222,7 @@ static int create_server (const char* port, const int family,
 
     /* Everything should be good, but let's check */
     if (info == NULL) {
-        error (sfd, "cannot bind to any address!", GET_ERR);
+        print_error (sfd, "cannot bind to any address!", GET_ERR);
         socket_close (sfd);
         return -1;
     }
@@ -225,30 +233,15 @@ static int create_server (const char* port, const int family,
 }
 
 /**
- * Casts the given \a data pointer into a \a CloseSocketData structure
- * and attempts to shutdown and close the \a sfd specified in the structure.
- * The error code will be written in the \a error field of the structure
+ * Casts the given \a data pointer into an int containing the
+ * socket file descriptor and closes it
  */
 static void* close_socket (void* data)
 {
-    /* Check if pointer is valid */
-    if (data) {
-        /* Get socket file descriptor */
-        int sfd = * ((int*) data);
-
-        /* Disable socket IO */
-        socket_shutdown (sfd, SOCKY_READ | SOCKY_WRITE);
-
-        /* Close the socket */
-#if defined _WIN32
-        closesocket (sfd);
-#else
-        close (sfd);
-#endif
-    }
-
-    /* Exit thread */
-    pthread_exit (NULL);
+    assert (data);
+    int* sfd = (int*) data;
+    socket_close (*sfd);
+    return NULL;
 }
 
 /**
@@ -337,7 +330,7 @@ struct addrinfo* get_address_info (const char* host,
 
     /* Check if there was an error with the address */
     if (error) {
-#if defined VERBOSE
+#if defined SOCKY_VERBOSE
         int code = GET_ERR;
         fprintf (stderr,
                  "Cannot obtain address info:\n"
@@ -378,7 +371,7 @@ int create_client_udp (const int family, const int flags)
 
     /* Fuck, there was an error creating the socket */
     if (!valid_sfd (sfd)) {
-        error (sfd, "cannot create UDP client socket", GET_ERR);
+        print_error (sfd, "cannot create UDP client socket", GET_ERR);
         return -1;
     }
 
@@ -434,7 +427,7 @@ int create_client_tcp (const char* host, const char* port,
 
     /* We should have established a connection, but let's check */
     if (info == NULL) {
-        error (sfd, "cannot connect to any address!", GET_ERR);
+        print_error (sfd, "cannot connect to any address!", GET_ERR);
         socket_close (sfd);
         return -1;
     }
@@ -486,15 +479,19 @@ int socket_close (const int sfd)
     if (!valid_sfd (sfd))
         return -1;
 
-    /* Disable IO operations */
+    /* Disable I/O operations on the socket */
     shutdown (sfd, SOCKY_READ | SOCKY_WRITE);
 
     /* Close the socket */
+    int error = 0;
 #if defined _WIN32
-    return closesocket (sfd);
+    error = closesocket (sfd);
 #else
-    return close (sfd);
+    error = close (sfd);
 #endif
+
+    /* Return result */
+    return error;
 }
 
 /**
@@ -502,8 +499,14 @@ int socket_close (const int sfd)
  */
 void socket_close_threaded (int sfd)
 {
+    /* Try to close the socket on different thread */
     pthread_t thread;
-    pthread_create (&thread, NULL, &close_socket, (void*) &sfd);
+    int error = pthread_create (&thread, NULL,
+                                &close_socket, (void*) &sfd);
+
+    /* Close socket normally if there is an error */
+    if (error)
+        shutdown (sfd, SOCKY_READ | SOCKY_WRITE);
 }
 
 /**
@@ -547,7 +550,7 @@ int tcp_accept (const int sfd, char* host, const int host_len,
 
     /* Check if new socket is valid */
     if (!valid_sfd (client_sfd)) {
-        error (sfd, "cannot create client socket durring accept()", GET_ERR);
+        print_error (sfd, "cannot create client socket durring accept()", GET_ERR);
         return -1;
     }
 
@@ -558,7 +561,7 @@ int tcp_accept (const int sfd, char* host, const int host_len,
 
     /* Check if there was an error obtaining remote information */
     if (err != 0)
-        error (sfd, "cannot obtain remote host information", GET_ERR);
+        print_error (sfd, "cannot obtain remote host information", GET_ERR);
 
     /* Return new socket */
     return client_sfd;
@@ -592,7 +595,7 @@ int udp_sendto (const int sfd,
 
     /* Send datagram */
     int bytes = sendto (sfd, buf, buf_len, flags,
-                        info->ai_addr, info->ai_addrlen);
+                        info->ai_addr, (int) info->ai_addrlen);
 
     /* Free address information */
     freeaddrinfo (info);
