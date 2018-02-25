@@ -25,6 +25,12 @@ void Output::init() {
     lock.unlock();
 }
 
+void Output::setNowPlaying(std::string song) {
+    lock.lock();
+    lcd_setNowPlaying(song);
+    lock.unlock();
+}
+
 void Output::setVoltage(float voltage) {
     lock.lock();
     lcd_setVoltage(voltage);
@@ -48,13 +54,22 @@ void Output::setMode(int mode) {
 void Output::lcd_setup() {
     lcdClear(lcd);
     lcdPosition(lcd, 0, 0); //Zero the cursor
-    lcdPuts(lcd, "  TEAM 401 CART DS"); //Write the header
+    lcdPuts(lcd, "Song:");
     lcdPosition(lcd, 0, 1); //Move to the second row
     lcdPuts(lcd, "Voltage:");
     lcdPosition(lcd, 0, 2); //Move to the third row
     lcdPuts(lcd, "Power:");
     lcdPosition(lcd, 0, 3); //Move to the fourth row
     lcdPuts(lcd, "Mode:");
+}
+
+void Output::lcd_setNowPlaying(std::string s) {
+    std::string spaces; //Spaces to be appended to song name to clear any previous text
+    for (int i = 0; i < 14 - s.length(); i++) { //14 is number of blank characters after "Song: "
+        spaces += " ";
+    }
+    lcdPosition(lcd, 6, 0);
+    lcdPuts(lcd, (s + spaces).substr(0, 14).c_str()); //Only allow up to 14 characters to be placed
 }
 
 void Output::lcd_setVoltage(float v) {

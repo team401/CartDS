@@ -6,10 +6,12 @@
 #define CARTDS_OUTPUT_HPP
 
 #include <mutex>
+#include <string>
 
 class Output {
 public:
     static void init();
+    static void setNowPlaying(std::string song);
     static void setVoltage(float volgate);
     static void setPower(int power);
     static void setMode(int mode);
@@ -26,6 +28,7 @@ private:
     const static int LCD_D7;
 
     static void lcd_setup();
+    static void lcd_setNowPlaying(std::string s);
     static void lcd_setVoltage(float v);
     static void lcd_setPower(int p);
     static void lcd_setMode(int m);
