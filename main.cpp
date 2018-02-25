@@ -11,7 +11,7 @@
 #include "Joystick.hpp"
 #include "lib/wiringpi/include/wiringPi.h"
 #include "lib/libds/include/DS_Events.h"
-#include "zhelpers.hpp"
+#include "Music.hpp"
 
 static bool running = true;
 static int eStopCounter = 0;
@@ -118,12 +118,14 @@ int main() {
 
     DS_SetTeamNumber(401);
     DS_SetCustomRobotAddress("10.4.1.2"); //Set the robot address to the address of the 401 cRIO
-    DS_ConfigureProtocol(DS_GetProtocolFRC_2014()); //Set the DS to use the 2014 protocol, which is the one for a cRIO
+    DS_Protocol ds2014 = DS_GetProtocolFRC_2014();
+    DS_ConfigureProtocol(&ds2014); //Set the DS to use the 2014 protocol, which is the one for a cRIO
     DS_SetControlMode(DS_CONTROL_TELEOPERATED);
 
     Joystick::initJoysticks(); //Initialize the joysticks
-    Input::init();
-    Output::init();
+    Input::init(); //Initialize the input buttons
+    Output::init(); //Initialize the LCD
+    Music::init(); //Initialize the music player
 
     pthread_t userInputThread;
     pthread_create(&userInputThread, NULL, &getUserInput, NULL);

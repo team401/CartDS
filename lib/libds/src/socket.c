@@ -24,7 +24,7 @@
 #include "DS_Utils.h"
 #include "DS_Socket.h"
 
-#include <socky.h>
+#include "../../socky/include/socky.h"
 #include <assert.h>
 
 #define SPRINTF_S snprintf
