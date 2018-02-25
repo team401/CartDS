@@ -99,36 +99,12 @@ void processEvents() {
                 Output::setVoltage(event.robot.voltage);
                 break;
             case DS_ROBOT_ENABLED_CHANGED:
-                updateOutput();
-                break;
             case DS_ROBOT_ESTOP_CHANGED:
-                updateOutput();
-                break;
             case DS_ROBOT_COMMS_CHANGED:
-                updateOutput();
-                break;
             case DS_ROBOT_CODE_CHANGED:
                 updateOutput();
                 break;
         }
-    }
-}
-
-void* processNet(void*) { //Processes network events from the rio
-    zmq::context_t context(1);
-    zmq::socket_t socket(context, ZMQ_SUB);
-    socket.setsockopt(ZMQ_RCVTIMEO, 30);
-    socket.setsockopt(ZMQ_SUBSCRIBE, "", 0); //Subscribe to the power topic
-
-    socket.connect("tcp://10.4.1.2:5800");
-    int latestPower = 0;
-    while (running) {
-        try {
-            latestPower = stoi(s_recv(socket));
-        } catch (...) {
-            latestPower = 0;
-        }
-        Output::setPower(latestPower);
     }
 }
 
@@ -142,7 +118,7 @@ int main() {
 
     DS_SetTeamNumber(401);
     DS_SetCustomRobotAddress("10.4.1.2"); //Set the robot address to the address of the 401 cRIO
-    DS_ConfigureProtocol(DS_GetProtocolFRC_2016()); //Set the DS to use the 2014 protocol, which is the one for a cRIO
+    DS_ConfigureProtocol(DS_GetProtocolFRC_2014()); //Set the DS to use the 2014 protocol, which is the one for a cRIO
     DS_SetControlMode(DS_CONTROL_TELEOPERATED);
 
     Joystick::initJoysticks(); //Initialize the joysticks
@@ -153,8 +129,6 @@ int main() {
     pthread_create(&userInputThread, NULL, &getUserInput, NULL);
     pthread_t keyPressThread;
     pthread_create(&keyPressThread, NULL, &getKeyPresses, NULL);
-    pthread_t netThread;
-    pthread_create(&netThread, NULL, &processNet, NULL);
 
     while (running) { //General DS task loop, runs forever (until system shutdown or 'q' is pressed)
         processEvents(); //Process any changes

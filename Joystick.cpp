@@ -7,6 +7,7 @@
 
 #include <SDL2/SDL.h>
 #include "lib/libds/include/LibDS.h"
+#include "Output.hpp"
 #include <stdio.h>
 #include <pthread.h>
 
@@ -93,6 +94,13 @@ void Joystick::processAxisEvent(SDL_Event *event) {
     int axis = event->jaxis.axis;
     int joystick = getId(event->jaxis.which);
     double value = ((double) (event->jaxis.value)) / SDL_AXIS_RANGE;
+
+    if (axis == 3) {
+        double newValue = value * -1;
+        newValue = newValue + 1;
+        newValue = newValue / 2;
+        Output::setPower((int) newValue*100);
+    }
 
     if (joystick > INVALID_ID) {
         DS_SetJoystickAxis(joystick, axis, value);
