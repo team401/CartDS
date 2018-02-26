@@ -8,7 +8,7 @@
 #include <mutex>
 #include <string>
 
-class Output {
+class LCD {
 public:
     static void init();
     static void setNowPlaying(std::string song);
@@ -19,13 +19,6 @@ private:
     static std::mutex lock;
 
     static int lcd;
-
-    const static int LCD_RS;
-    const static int LCD_E;
-    const static int LCD_D4;
-    const static int LCD_D5;
-    const static int LCD_D6;
-    const static int LCD_D7;
 
     static void lcd_setup();
     static void lcd_setNowPlaying(std::string s);

@@ -3,8 +3,7 @@
 #include "Log.hpp"
 #include "lib/libds/include/LibDS.h"
 #include "Input.hpp"
-#include "Output.hpp"
-#include <pthread.h>
+#include "LCD.hpp"
 #include <termios.h>
 #include <unistd.h>
 #include <cstdlib>
@@ -16,77 +15,40 @@
 static bool running = true;
 static int eStopCounter = 0;
 
-char getch() {
-    char buf=0;
-    struct termios old={0};
-    fflush(stdout);
-    if(tcgetattr(0, &old)<0)
-        perror("tcsetattr()");
-    old.c_lflag&=~ICANON;
-    old.c_lflag&=~ECHO;
-    old.c_cc[VMIN]=1;
-    old.c_cc[VTIME]=0;
-    if(tcsetattr(0, TCSANOW, &old)<0)
-        perror("tcsetattr ICANON");
-    if(read(0,&buf,1)<0)
-        perror("read()");
-    old.c_lflag|=ICANON;
-    old.c_lflag|=ECHO;
-    if(tcsetattr(0, TCSADRAIN, &old)<0)
-        perror ("tcsetattr ~ICANON");
-    return buf;
-}
+void getUserInput() {
+    if (Input::getEStop()) {
+        eStopCounter++;
+    } else {
+        eStopCounter = 0;
+    }
 
-void* getKeyPresses(void*) {
-    while (running) {
-        if (getch() == 'q') {
-            running = 0;
+    if (eStopCounter > 10) {
+        DS_SetEmergencyStopped(true);
+        Log::w("UI", "Cart Estopped!  The RIO must be rebooted!");
+    }
+
+    if (Input::getEnabled()) {
+        if (DS_GetCanBeEnabled()) {
+            DS_SetControlMode(DS_CONTROL_TELEOPERATED);
+            DS_SetRobotEnabled(true);
+            Log::d("UI", "Cart Enabled");
         }
     }
-    pthread_exit(0);
-    return NULL;
-}
 
-void* getUserInput(void*) {
-    while (running) {
-        if (Input::getEStop()) {
-            eStopCounter++;
-        } else {
-            eStopCounter = 0;
-        }
-
-        if (eStopCounter > 10) {
-            DS_SetEmergencyStopped(true);
-            Log::w("UI", "Cart Estopped!  The RIO must be rebooted!");
-        }
-
-        if (Input::getEnabled()) {
-            if (DS_GetCanBeEnabled()) {
-                DS_SetControlMode(DS_CONTROL_TELEOPERATED);
-                DS_SetRobotEnabled(true);
-                Log::d("UI", "Cart Enabled");
-            }
-        }
-
-        if (Input::getDisabled()) {
-            DS_SetRobotEnabled(false);
-            Log::d("UI", "Cart Disabled");
-        }
-
-        DS_Sleep(20);
+    if (Input::getDisabled()) {
+        DS_SetRobotEnabled(false);
+        Log::d("UI", "Cart Disabled");
     }
-    pthread_exit(0);
-    return NULL;
 }
 
 void updateOutput() {
     if (DS_GetEmergencyStopped()) {
-        Output::setMode(3);
+        LCD::setMode(3);
     } else {
         if (DS_GetRobotCommunications() && DS_GetRobotCode()) {
-            Output::setMode(DS_GetRobotEnabled());
+            LCD::setMode(DS_GetRobotEnabled());
         } else {
-            Output::setMode(2);
+            LCD::setMode(2);
         }
     }
 }
@@ -96,7 +58,7 @@ void processEvents() {
     while (DS_PollEvent(&event)) {
         switch (event.type) {
             case DS_ROBOT_VOLTAGE_CHANGED:
-                Output::setVoltage(event.robot.voltage);
+                LCD::setVoltage(event.robot.voltage);
                 break;
             case DS_ROBOT_ENABLED_CHANGED:
             case DS_ROBOT_ESTOP_CHANGED:
@@ -124,15 +86,11 @@ int main() {
 
     Joystick::initJoysticks(); //Initialize the joysticks
     Input::init(); //Initialize the input buttons
-    Output::init(); //Initialize the LCD
+    LCD::init(); //Initialize the LCD
     Music::init(); //Initialize the music player
 
-    pthread_t userInputThread;
-    pthread_create(&userInputThread, NULL, &getUserInput, NULL);
-    pthread_t keyPressThread;
-    pthread_create(&keyPressThread, NULL, &getKeyPresses, NULL);
-
     while (running) { //General DS task loop, runs forever (until system shutdown or 'q' is pressed)
+        getUserInput(); //Read buttons on enclosure
         processEvents(); //Process any changes
         Joystick::updateJoysticks(); //Update the joysticks
         DS_Sleep(20);

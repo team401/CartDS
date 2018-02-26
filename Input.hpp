@@ -5,17 +5,12 @@
 #ifndef CARTDS_INPUT_HPP
 #define CARTDS_INPUT_HPP
 
-
 class Input {
 public:
     static void init();
     static bool getEStop();
     static bool getEnabled();
     static bool getDisabled();
-private:
-    static int eStopPin;
-    static int enabledPin;
-    static int disabledPin;
 };
 
 

@@ -3,29 +3,26 @@
 //
 
 #include "Input.hpp"
+#include "Constants.hpp"
 #include "lib/wiringpi/include/wiringPi.h"
 
-int Input::eStopPin = 0;
-int Input::disabledPin = 2;
-int Input::enabledPin = 3;
-
 void Input::init() {
-    pinMode(eStopPin, INPUT);
-    pinMode(disabledPin, INPUT);
-    pinMode(enabledPin, INPUT);
-    pullUpDnControl(eStopPin, PUD_DOWN);
-    pullUpDnControl(disabledPin, PUD_DOWN);
-    pullUpDnControl(enabledPin, PUD_DOWN);
+    pinMode(ESTOP_PIN, INPUT);
+    pinMode(DISABLED_PIN, INPUT);
+    pinMode(ENABLED_PIN, INPUT);
+    pullUpDnControl(ESTOP_PIN, PUD_DOWN);
+    pullUpDnControl(DISABLED_PIN, PUD_DOWN);
+    pullUpDnControl(ENABLED_PIN, PUD_DOWN);
 }
 
 bool Input::getEStop() {
-    return digitalRead(eStopPin);
+    return digitalRead(ESTOP_PIN);
 }
 
 bool Input::getDisabled() {
-    return digitalRead(disabledPin);
+    return digitalRead(DISABLED_PIN);
 }
 
 bool Input::getEnabled() {
-    return digitalRead(enabledPin);
+    return digitalRead(ENABLED_PIN);
 }

@@ -7,7 +7,8 @@
 
 #include <SDL2/SDL.h>
 #include "lib/libds/include/LibDS.h"
-#include "Output.hpp"
+#include "LCD.hpp"
+#include "LocalTriggers.hpp"
 #include <stdio.h>
 #include <pthread.h>
 
@@ -84,6 +85,8 @@ void Joystick::processHatEvent(SDL_Event *event) {
     if (joystick > INVALID_ID) {
         DS_SetJoystickHat(joystick, hat, angle);
     }
+
+    LocalTriggers::onJoyHat(hat, angle);
 }
 
 void Joystick::processAxisEvent(SDL_Event *event) {
@@ -95,16 +98,11 @@ void Joystick::processAxisEvent(SDL_Event *event) {
     int joystick = getId(event->jaxis.which);
     double value = ((double) (event->jaxis.value)) / SDL_AXIS_RANGE;
 
-    if (axis == 3) {
-        double newValue = value * -1;
-        newValue = newValue + 1;
-        newValue = newValue / 2;
-        Output::setPower((int) newValue*100);
-    }
-
     if (joystick > INVALID_ID) {
         DS_SetJoystickAxis(joystick, axis, value);
     }
+
+    LocalTriggers::onJoyAxis(axis, value);
 }
 
 void Joystick::processButtonEvent(SDL_Event *event) {
@@ -119,6 +117,8 @@ void Joystick::processButtonEvent(SDL_Event *event) {
     if (joystick > INVALID_ID) {
         DS_SetJoystickButton(joystick, button, pressed);
     }
+
+    LocalTriggers::onJoyButton(button, pressed);
 }
 
 void Joystick::initJoysticks() {
