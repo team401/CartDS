@@ -36,6 +36,7 @@ void Joystick::registerJoysticks() {
         SDL_Joystick* joystick = SDL_JoystickOpen(i);
 
         if (joystick) {
+            Log::i("CartDS", "Registered Joystick " + i);
             DS_JoysticksAdd (SDL_JoystickNumAxes(joystick),
                              SDL_JoystickNumHats(joystick),
                              SDL_JoystickNumButtons(joystick));
@@ -126,7 +127,7 @@ void Joystick::initJoysticks() {
         initialized = 1;
         SDL_JoystickEventState(SDL_ENABLE);
     } else {
-        Log::e("Joystick", "Cannot initialize SDL!");
+        Log::e("Joystick", "Cannot initialize SDL gottem!");
         exit(1);
     }
 }
