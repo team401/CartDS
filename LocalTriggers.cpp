@@ -2,8 +2,10 @@
 // Created by cameronearle on 2/26/18.
 //
 
+#include <iostream>
 #include "LocalTriggers.hpp"
 #include "LCD.hpp"
+
 
 void LocalTriggers::onJoyHat(int hat, int value) {
 
@@ -11,6 +13,7 @@ void LocalTriggers::onJoyHat(int hat, int value) {
 
 
 void LocalTriggers::onJoyAxis(int axis, double value) {
+    std::cout << "Axis: " << axis << "  Value: " << value;
     if (axis == 3) {
         double newValue = value * -1;
         newValue = newValue + 1;
